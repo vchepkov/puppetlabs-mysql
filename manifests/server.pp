@@ -15,6 +15,8 @@
 #   The MySQL configuration file's permissions mode.
 # @param includedir
 #   The location, as a path, of !includedir for custom configuration overrides.
+# @param install_first
+#   Install package prior to configuration. Defaults to `false`
 # @param install_options
 #   Passes [install_options](https://docs.puppetlabs.com/references/latest/type.html#package-attribute-install_options) array to managed package resources. You must pass the appropriate options for the specified package manager
 # @param install_secret_file
@@ -80,10 +82,11 @@ class mysql::server (
   $config_file             = $mysql::params::config_file,
   $config_file_mode        = $mysql::params::config_file_mode,
   $includedir              = $mysql::params::includedir,
+  $install_first           = false,
   $install_options         = undef,
   $install_secret_file     = $mysql::params::install_secret_file,
   $manage_config_file      = $mysql::params::manage_config_file,
-  Mysql::Options  $options                 = {},
+  Mysql::Options  $options = {},
   $override_options        = {},
   $package_ensure          = $mysql::params::server_package_ensure,
   $package_manage          = $mysql::params::server_package_manage,
@@ -145,34 +148,37 @@ class mysql::server (
 
   Class['mysql::server::root_password'] -> Mysql::Db <| |>
 
-  include 'mysql::server::config'
-  include 'mysql::server::install'
-  include 'mysql::server::managed_dirs'
-  include 'mysql::server::installdb'
-  include 'mysql::server::service'
-  include 'mysql::server::root_password'
-  include 'mysql::server::providers'
+  contain 'mysql::server::config'
+  contain 'mysql::server::install'
+  contain 'mysql::server::managed_dirs'
+  contain 'mysql::server::installdb'
+  contain 'mysql::server::service'
+  contain 'mysql::server::root_password'
+  contain 'mysql::server::providers'
 
   if $remove_default_accounts {
-    class { 'mysql::server::account_security':
-      require => Anchor['mysql::server::end'],
-    }
+    contain 'mysql::server::account_security'
   }
-
-  anchor { 'mysql::server::start': }
-  anchor { 'mysql::server::end': }
 
   if $restart {
     Class['mysql::server::config']
     ~> Class['mysql::server::service']
   }
 
-  Anchor['mysql::server::start']
-  -> Class['mysql::server::config']
-  -> Class['mysql::server::install']
-  -> Class['mysql::server::managed_dirs']
+  if $install_first {
+    Class['mysql::server::install']
+    -> Class['mysql::server::config']
+    -> Class['mysql::server::managed_dirs']
+  } else {
+    Class['mysql::server::config']
+    -> Class['mysql::server::install']
+    -> Class['mysql::server::managed_dirs']
+  }
+
+  Class['mysql::server::managed_dirs']
   -> Class['mysql::server::installdb']
   -> Class['mysql::server::service']
   -> Class['mysql::server::root_password']
   -> Class['mysql::server::providers']
--> Anchor['mysql::server::end'] }
+
+}
